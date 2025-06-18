@@ -4,7 +4,7 @@ plugins {
 
 android {
     namespace = "com.assemblynativeactivity"
-    compileSdkPreview = "Baklava"
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.assemblynativeactivity"
@@ -26,13 +26,13 @@ android {
     externalNativeBuild {
         cmake {
             path = file("CMakeLists.txt")
-            version = "3.31.1"
+            version = "4.0.2"
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_23
-        targetCompatibility = JavaVersion.VERSION_23
+        sourceCompatibility = JavaVersion.VERSION_24
+        targetCompatibility = JavaVersion.VERSION_24
     }
-    buildToolsVersion = "36.0.0 rc3"
-    ndkVersion = "28.0.12674087 rc2"
+    buildToolsVersion = "36.0.0"
+    ndkVersion = "29.0.13113456 rc1"
 }
