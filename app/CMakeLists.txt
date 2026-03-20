@@ -1,13 +1,14 @@
 cmake_minimum_required(VERSION 3.22.1)
-
 project(AssemblyNativeActivity C ASM)
-
 enable_language(ASM)
 
-set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -march=armv8-a+simd")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -march=armv8-a+simd")
+# Флаги только для arm64-v8a
+if(ANDROID_ABI STREQUAL "arm64-v8a")
+    set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -march=armv8-a+simd")
+    set(CMAKE_C_FLAGS   "${CMAKE_C_FLAGS}   -O2 -march=armv8-a+simd")
+endif()
 
-find_library(log-lib log)
+find_library(log-lib     log)
 find_library(android-lib android)
 
 add_library(
@@ -21,6 +22,4 @@ target_link_libraries(
     AssemblyNativeActivity
     ${log-lib}
     ${android-lib}
-    android
-    log
 )
