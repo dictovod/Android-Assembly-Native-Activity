@@ -27,7 +27,6 @@ jobs:
       - name: Set local.properties
         run: |
           echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
-          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/29.0.13113456" >> local.properties
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
@@ -45,7 +44,6 @@ jobs:
           APK_BYTES=$(stat -c%s "$APK")
           APK_MB=$(echo "scale=3; $APK_BYTES / 1048576" | bc)
 
-          # Извлечь .so из APK
           SO_NAME=$(unzip -l "$APK" | grep "lib/arm64-v8a" | grep "\.so" | awk '{print $4}' | head -1)
           echo "SO: $SO_NAME"
           unzip -p "$APK" "$SO_NAME" > /tmp/lib.so
@@ -62,7 +60,6 @@ jobs:
           echo "║             СЕКЦИИ БИНАРНИКА (.so)                       ║"
           echo "╠══════════════════════════════════════════════════════════╣"
 
-          # Правильный парсинг секций через readelf -S
           readelf -S /tmp/lib.so 2>/dev/null | grep -E "^\s+\[" | while read line; do
             NAME=$(echo "$line" | awk '{print $2}')
             SIZE_HEX=$(echo "$line" | awk '{print $6}')
@@ -76,8 +73,6 @@ jobs:
           echo "╠══════════════════════════════════════════════════════════╣"
           echo "║             КЛЮЧЕВЫЕ СЕКЦИИ                              ║"
           echo "╠══════════════════════════════════════════════════════════╣"
-
-          # Полный дамп секций для отладки
           echo "--- readelf raw ---"
           readelf -S /tmp/lib.so 2>/dev/null
           echo "--- size ---"
@@ -112,7 +107,7 @@ jobs:
           [ $TOTAL -eq 0 ] && TOTAL=1
 
           ASM_PCT=$(echo "scale=1; $ASM*100/$TOTAL" | bc)
-          CC_PCT=$(echo "scale.1; $CC*100/$TOTAL" | bc 2>/dev/null || echo "0.0")
+          CC_PCT=$(echo "scale=1; $CC*100/$TOTAL" | bc)
           BLD_PCT=$(echo "scale=1; $BLD*100/$TOTAL" | bc)
 
           printf "║  Assembly (.s/.S)    : %5d строк  (%s%%)              ║\n" $ASM "$ASM_PCT"
