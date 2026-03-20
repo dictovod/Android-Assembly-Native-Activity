@@ -1,20 +1,15 @@
 plugins {
     alias(libs.plugins.android.application)
 }
-
 android {
     namespace = "com.assemblynativeactivity"
     compileSdk = 36
-
     defaultConfig {
         applicationId = "com.assemblynativeactivity"
         minSdk = 24
-
         ndk {
-            abiFilters += "x86_64"
             abiFilters += "arm64-v8a"
         }
-
         externalNativeBuild {
             cmake {
                 cFlags += "-std=c17"
@@ -22,7 +17,6 @@ android {
         }
         targetSdk = 35
     }
-
     externalNativeBuild {
         cmake {
             path = file("CMakeLists.txt")
