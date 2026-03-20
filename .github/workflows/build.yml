@@ -39,113 +39,100 @@ jobs:
 
       - name: Full Analysis Report
         run: |
-          APK=$(find . -name "*.apk" | head -1)
+          set -e
+          APK=$(find . -name "*.apk" -not -path "*/incrementalMergedAssets/*" | head -1)
+          echo "APK: $APK"
           APK_BYTES=$(stat -c%s "$APK")
           APK_MB=$(echo "scale=3; $APK_BYTES / 1048576" | bc)
 
           # Извлечь .so из APK
           SO_NAME=$(unzip -l "$APK" | grep "lib/arm64-v8a" | grep "\.so" | awk '{print $4}' | head -1)
+          echo "SO: $SO_NAME"
           unzip -p "$APK" "$SO_NAME" > /tmp/lib.so
-
           SO_BYTES=$(stat -c%s /tmp/lib.so)
 
-          # Секции через readelf
           echo ""
           echo "╔══════════════════════════════════════════════════════════╗"
           echo "║           FULL BUILD REPORT — ASM ANDROID APK           ║"
           echo "╠══════════════════════════════════════════════════════════╣"
-          printf "║  APK файл : %-47s║\n" "$(basename $APK)"
-          printf "║  APK размер: %-46s║\n" "${APK_MB} MB  (${APK_BYTES} bytes)"
-          printf "║  .so размер: %-46s║\n" "${SO_BYTES} bytes"
+          printf "║  APK файл   : %-44s║\n" "$(basename $APK)"
+          printf "║  APK размер : %-44s║\n" "${APK_MB} MB  (${APK_BYTES} bytes)"
+          printf "║  .so размер : %-44s║\n" "${SO_BYTES} bytes"
           echo "╠══════════════════════════════════════════════════════════╣"
           echo "║             СЕКЦИИ БИНАРНИКА (.so)                       ║"
           echo "╠══════════════════════════════════════════════════════════╣"
 
-          # Подробный readelf
-          readelf -S /tmp/lib.so 2>/dev/null | grep -E "\.(text|data|rodata|bss|plt|got|dynamic|dynsym|dynstr|hash|gnu)" | while read line; do
+          # Правильный парсинг секций через readelf -S
+          readelf -S /tmp/lib.so 2>/dev/null | grep -E "^\s+\[" | while read line; do
             NAME=$(echo "$line" | awk '{print $2}')
             SIZE_HEX=$(echo "$line" | awk '{print $6}')
-            SIZE_DEC=$(printf '%d' "0x${SIZE_HEX}" 2>/dev/null || echo 0)
-            if [ $SIZE_DEC -gt 0 ]; then
-              PCT=$(echo "scale=1; $SIZE_DEC * 100 / $SO_BYTES" | bc)
-              printf "║  %-20s : %8d bytes  (%5s%%)%*s║\n" "$NAME" $SIZE_DEC "$PCT" $((5 - ${#PCT})) ""
-            fi
+            [ -z "$SIZE_HEX" ] && continue
+            SIZE_DEC=$(printf '%d' "0x${SIZE_HEX}" 2>/dev/null) || continue
+            [ "$SIZE_DEC" -eq 0 ] && continue
+            PCT=$(echo "scale=1; $SIZE_DEC * 100 / $SO_BYTES" | bc)
+            printf "║  %-18s : %8d bytes  (%5s%%)              ║\n" "$NAME" $SIZE_DEC "$PCT"
           done
 
           echo "╠══════════════════════════════════════════════════════════╣"
-          echo "║             ИТОГ ПО КЛЮЧЕВЫМ СЕКЦИЯМ                    ║"
+          echo "║             КЛЮЧЕВЫЕ СЕКЦИИ                              ║"
           echo "╠══════════════════════════════════════════════════════════╣"
 
-          TEXT=$(readelf -S /tmp/lib.so 2>/dev/null | grep " \.text " | awk '{print $6}' | head -1)
-          DATA=$(readelf -S /tmp/lib.so 2>/dev/null | grep " \.data " | awk '{print $6}' | head -1)
-          RODATA=$(readelf -S /tmp/lib.so 2>/dev/null | grep "\.rodata" | awk '{print $6}' | head -1)
-          BSS=$(readelf -S /tmp/lib.so 2>/dev/null | grep " \.bss " | awk '{print $6}' | head -1)
-
-          for PAIR in "text:${TEXT:-0}" "data:${DATA:-0}" "rodata:${RODATA:-0}" "bss:${BSS:-0}"; do
-            NAME=$(echo $PAIR | cut -d: -f1)
-            HEX=$(echo $PAIR | cut -d: -f2)
-            DEC=$(printf '%d' "0x${HEX}" 2>/dev/null || echo 0)
-            PCT=$(echo "scale=2; $DEC * 100 / $SO_BYTES" | bc 2>/dev/null || echo "0.00")
-            printf "║  .%-17s : %8d bytes  (%5s%%)%*s║\n" "$NAME" $DEC "$PCT" $((5 - ${#PCT})) ""
-          done
+          # Полный дамп секций для отладки
+          echo "--- readelf raw ---"
+          readelf -S /tmp/lib.so 2>/dev/null
+          echo "--- size ---"
+          size /tmp/lib.so 2>/dev/null || true
 
           echo "╠══════════════════════════════════════════════════════════╣"
           echo "║             ИСХОДНЫЙ КОД (строки)                        ║"
           echo "╠══════════════════════════════════════════════════════════╣"
 
           ASM=0
-          for f in $(find . -name "*.s" -o -name "*.S" 2>/dev/null); do
-            L=$(wc -l < "$f"); ASM=$((ASM+L))
-          done
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            L=$(wc -l < "$f" 2>/dev/null || echo 0)
+            ASM=$((ASM + L))
+          done < <(find . -name "*.s" -o -name "*.S" 2>/dev/null)
+
           CC=0
-          for f in $(find . -name "*.c" -o -name "*.cpp" 2>/dev/null); do
-            L=$(wc -l < "$f"); CC=$((CC+L))
-          done
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            L=$(wc -l < "$f" 2>/dev/null || echo 0)
+            CC=$((CC + L))
+          done < <(find . -name "*.c" -o -name "*.cpp" 2>/dev/null)
+
           BLD=0
-          for f in $(find . -name "CMakeLists.txt" -o -name "*.gradle" -o -name "*.kts" -o -name "*.toml" 2>/dev/null); do
-            L=$(wc -l < "$f"); BLD=$((BLD+L))
-          done
-          TOTAL=$((ASM+CC+BLD))
+          while IFS= read -r f; do
+            [ -f "$f" ] || continue
+            L=$(wc -l < "$f" 2>/dev/null || echo 0)
+            BLD=$((BLD + L))
+          done < <(find . \( -name "CMakeLists.txt" -o -name "*.gradle" -o -name "*.kts" -o -name "*.toml" \) 2>/dev/null)
+
+          TOTAL=$((ASM + CC + BLD))
+          [ $TOTAL -eq 0 ] && TOTAL=1
 
           ASM_PCT=$(echo "scale=1; $ASM*100/$TOTAL" | bc)
-          CC_PCT=$(echo "scale=1; $CC*100/$TOTAL" | bc)
+          CC_PCT=$(echo "scale.1; $CC*100/$TOTAL" | bc 2>/dev/null || echo "0.0")
           BLD_PCT=$(echo "scale=1; $BLD*100/$TOTAL" | bc)
 
-          printf "║  Assembly (.s/.S)    : %5d строк  (%s%%)%*s║\n" $ASM "$ASM_PCT" $((20-${#ASM_PCT})) ""
-          printf "║  C/C++ (.c/.cpp)    : %5d строк  (%s%%)%*s║\n" $CC  "$CC_PCT"  $((20-${#CC_PCT}))  ""
-          printf "║  Build (CMake/Gradle): %5d строк  (%s%%)%*s║\n" $BLD "$BLD_PCT" $((20-${#BLD_PCT})) ""
-          printf "║  ИТОГО              : %5d строк%*s║\n" $TOTAL 28 ""
+          printf "║  Assembly (.s/.S)    : %5d строк  (%s%%)              ║\n" $ASM "$ASM_PCT"
+          printf "║  C/C++ (.c/.cpp)    : %5d строк  (%s%%)              ║\n" $CC  "$CC_PCT"
+          printf "║  Build (CMake/Gradle): %5d строк  (%s%%)              ║\n" $BLD "$BLD_PCT"
+          printf "║  ИТОГО              : %5d строк                       ║\n" $TOTAL
 
           echo "╠══════════════════════════════════════════════════════════╣"
-          echo "║             СИМВОЛЫ И ФУНКЦИИ                            ║"
+          echo "║             СИМВОЛЫ                                      ║"
           echo "╠══════════════════════════════════════════════════════════╣"
-
-          SYM_COUNT=$(readelf -s /tmp/lib.so 2>/dev/null | grep -c "FUNC" || echo 0)
-          GLOBAL_SYM=$(readelf -s /tmp/lib.so 2>/dev/null | grep "GLOBAL" | grep -c "FUNC" || echo 0)
-          printf "║  Всего функций  : %-40s║\n" "$SYM_COUNT"
-          printf "║  Глобальных     : %-40s║\n" "$GLOBAL_SYM"
-
-          # Список экспортируемых символов
-          echo "╠══════════════════════════════════════════════════════════╣"
-          echo "║             ЭКСПОРТИРУЕМЫЕ СИМВОЛЫ                       ║"
-          echo "╠══════════════════════════════════════════════════════════╣"
-          readelf -s /tmp/lib.so 2>/dev/null | grep "GLOBAL" | grep "FUNC" | awk '{print $8}' | while read SYM; do
+          readelf -s /tmp/lib.so 2>/dev/null | grep "FUNC" | awk '{print $8}' | while read SYM; do
+            [ -z "$SYM" ] && continue
             printf "║  %-56s║\n" "$SYM"
           done
 
           echo "╠══════════════════════════════════════════════════════════╣"
-          echo "║             АРХИТЕКТУРА И МЕТАДАННЫЕ                     ║"
+          echo "║             ДИЗАССЕМБЛЕР (первые инструкции)             ║"
           echo "╠══════════════════════════════════════════════════════════╣"
-          ARCH=$(readelf -h /tmp/lib.so 2>/dev/null | grep "Machine:" | awk '{print $2, $3}')
-          CLASS=$(readelf -h /tmp/lib.so 2>/dev/null | grep "Class:" | awk '{print $2}')
-          printf "║  Архитектура : %-43s║\n" "$ARCH"
-          printf "║  Класс       : %-43s║\n" "$CLASS"
+          objdump -d /tmp/lib.so 2>/dev/null | head -50 || true
           echo "╚══════════════════════════════════════════════════════════╝"
-
-          # Дополнительно — дизассемблер первых инструкций
-          echo ""
-          echo "=== ПЕРВЫЕ 20 ИНСТРУКЦИЙ (.text секция) ==="
-          objdump -d --start-address=0x0 /tmp/lib.so 2>/dev/null | head -40 || true
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
