@@ -87,21 +87,21 @@ jobs:
             [ -f "$f" ] || continue
             L=$(wc -l < "$f" 2>/dev/null || echo 0)
             ASM=$((ASM + L))
-          done < <(find . -name "*.s" -o -name "*.S" 2>/dev/null)
+          done < <(find ./app -name "*.s" -o -name "*.S" 2>/dev/null)
 
           CC=0
           while IFS= read -r f; do
             [ -f "$f" ] || continue
             L=$(wc -l < "$f" 2>/dev/null || echo 0)
             CC=$((CC + L))
-          done < <(find . -name "*.c" -o -name "*.cpp" 2>/dev/null)
+          done < <(find ./app -name "*.c" -o -name "*.cpp" 2>/dev/null)
 
           BLD=0
           while IFS= read -r f; do
             [ -f "$f" ] || continue
             L=$(wc -l < "$f" 2>/dev/null || echo 0)
             BLD=$((BLD + L))
-          done < <(find . \( -name "CMakeLists.txt" -o -name "*.gradle" -o -name "*.kts" -o -name "*.toml" \) 2>/dev/null)
+          done < <(find ./app \( -name "CMakeLists.txt" -o -name "*.gradle" -o -name "*.kts" -o -name "*.toml" \) 2>/dev/null)
 
           TOTAL=$((ASM + CC + BLD))
           [ $TOTAL -eq 0 ] && TOTAL=1
