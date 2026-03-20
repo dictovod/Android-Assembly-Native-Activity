@@ -1,13 +1,32 @@
-cmake_minimum_required(VERSION 4.0.2)
+cmake_minimum_required(VERSION 3.22.1)
+project(AssemblyNativeActivity C ASM)
 
-project("AssemblyNativeActivity")
-
-set(${CMAKE_ASM_FLAGS} "${CMAKE_C_FLAGS} -Wall -Werror -O3")
-
+# Включить поддержку ASM для ARM64
 enable_language(ASM)
 
-add_library(${CMAKE_PROJECT_NAME} SHARED main.c main-${ANDROID_ABI}.asm)
+# Установить флаги для максимального ASM
+set(CMAKE_ASM_FLAGS "${CMAKE_ASM_FLAGS} -march=armv8-a+simd")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O2 -march=armv8-a+simd")
 
-include_directories(${CMAKE_SOURCE_DIR})
+# Найти системные библиотеки
+find_library(log-lib     log)
+find_library(android-lib android)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} log)
+# Собрать .so из ASM исходников
+add_library(
+    AssemblyNativeActivity
+    SHARED
+    # Основной ASM файл — весь код на ассемблере
+    asm/main_asm.S
+    # Минимальный C glue — только для NativeActivity entry
+    native_glue.c
+)
+
+# Линковать с системными библиотеками
+target_link_libraries(
+    AssemblyNativeActivity
+    ${log-lib}
+    ${android-lib}
+    android
+    log
+)
